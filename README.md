@@ -5,6 +5,12 @@ Quickstart
 - Run the CLI: `uv run ndb`
 - Show version: `uv run ndb -- --version`
 
+Query
+
+- Search devices by field value:
+  - `uv run -- ndb query ip_address=192.168.0.49`
+  - `uv run -- ndb query category=cp --json`
+
 Discovery
 
 - Single device (via /cp/version.json):
