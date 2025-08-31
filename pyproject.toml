@@ -1,0 +1,20 @@
+[project]
+name = "ndb"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "sqlite-utils>=3.38",
+    "zeroconf>=0.147.0",
+]
+
+[project.scripts]
+ndb = "ndb.cli:main"
+
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ndb"]
