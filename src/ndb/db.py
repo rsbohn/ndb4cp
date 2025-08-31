@@ -148,6 +148,30 @@ def list_devices(
         return list(cur.fetchall())
 
 
+def query_devices(
+    filters: dict[str, str], *, db_path: Path | str = DEFAULT_DB_PATH
+) -> List[Tuple[str, str | None, str | None, str | None, str, str]]:
+    """Return devices matching all field filters."""
+    allowed = {"uid", "hostname", "ip_address", "device_category"}
+    clauses: list[str] = []
+    params: list[str] = []
+    for key, value in filters.items():
+        if key not in allowed:
+            raise ValueError(f"Unknown field: {key}")
+        clauses.append(f"{key} = ?")
+        params.append(value)
+    where = " AND ".join(clauses) if clauses else "1"
+    query = (
+        "SELECT uid, hostname, ip_address, device_category, cas_hash, last_seen "
+        "FROM devices WHERE deleted_at IS NULL AND "
+        + where
+        + " ORDER BY hostname, uid"
+    )
+    with connect(db_path) as conn:
+        cur = conn.execute(query, params)
+        return list(cur.fetchall())
+
+
 def get_device_cas(uid: str, *, db_path: Path | str = DEFAULT_DB_PATH) -> Tuple[str, str] | None:
     """Return (cas_hash, content) for a device uid, or None if not found."""
     with connect(db_path) as conn:

@@ -70,6 +70,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ls.add_argument("--json", action="store_true", help="output JSON instead of a table")
 
+    # ndb query: filter devices by field=value pairs
+    query = sub.add_parser("query", help="query devices by example")
+    query.add_argument(
+        "pairs", nargs="+", help="field=value filters (e.g., ip_address=1.2.3.4)"
+    )
+    query.add_argument(
+        "--path", type=Path, default=dbmod.DEFAULT_DB_PATH, help="path to database"
+    )
+    query.add_argument("--json", action="store_true", help="output JSON instead of a table")
+
     # ndb get <uid>: show raw content from CAS
     get = sub.add_parser("get", help="show raw device record by UID")
     get.add_argument("uid", help="device UID")
@@ -185,6 +195,55 @@ def main(argv: list[str] | None = None) -> int:
             return (s2[: width - 1] + "…") if len(s2) > width else s2
 
         # Column widths
+        W_UID, W_HOST, W_IP, W_CAT, W_SEEN = 12, 24, 15, 8, 19
+        header = f"{ 'UID'.ljust(W_UID) }  { 'Hostname'.ljust(W_HOST) }  { 'IP'.ljust(W_IP) }  { 'Cat'.ljust(W_CAT) }  Last Seen"
+        print(header)
+        for uid, hostname, ip, cat, cas_hash, last_seen in rows:
+            line = (
+                f"{clip(uid, W_UID).ljust(W_UID)}  "
+                f"{clip(hostname, W_HOST).ljust(W_HOST)}  "
+                f"{clip(ip, W_IP).ljust(W_IP)}  "
+                f"{clip(cat, W_CAT).ljust(W_CAT)}  "
+                f"{(last_seen or '-'): >{W_SEEN}}"
+            )
+            print(line)
+        return 0
+
+    if args.cmd == "query":
+        filters: dict[str, str] = {}
+        for pair in args.pairs:
+            if "=" not in pair:
+                print(f"Invalid filter: {pair}")
+                return 2
+            k, v = pair.split("=", 1)
+            if k == "category":
+                k = "device_category"
+            filters[k] = v
+        try:
+            rows = dbmod.query_devices(filters, db_path=args.path)
+        except ValueError as e:
+            print(str(e))
+            return 2
+        if args.json:
+            import json as _json
+            out = [
+                {
+                    "uid": uid,
+                    "hostname": hostname,
+                    "ip_address": ip,
+                    "device_category": cat,
+                    "cas_hash": cas_hash,
+                    "last_seen": last_seen,
+                }
+                for (uid, hostname, ip, cat, cas_hash, last_seen) in rows
+            ]
+            print(_json.dumps(out, indent=2))
+            return 0
+
+        def clip(s: str | None, width: int) -> str:
+            s2 = (s or "-")
+            return (s2[: width - 1] + "…") if len(s2) > width else s2
+
         W_UID, W_HOST, W_IP, W_CAT, W_SEEN = 12, 24, 15, 8, 19
         header = f"{ 'UID'.ljust(W_UID) }  { 'Hostname'.ljust(W_HOST) }  { 'IP'.ljust(W_IP) }  { 'Cat'.ljust(W_CAT) }  Last Seen"
         print(header)
