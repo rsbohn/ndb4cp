@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+# Devlog privacy gate: block commits that leak private network details
+if command -v uv >/dev/null 2>&1; then
+  exec uv run -- python scripts/check_privacy.py --staged
+else
+  exec python3 scripts/check_privacy.py --staged
+fi
