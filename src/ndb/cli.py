@@ -28,6 +28,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="path to SQLite database (default: local.db)",
     )
 
+    status = db_sub.add_parser("status", help="show database health report")
+    status.add_argument(
+        "--path",
+        type=Path,
+        default=dbmod.DEFAULT_DB_PATH,
+        help="path to SQLite database (default: local.db)",
+    )
+    status.add_argument("--json", action="store_true", help="output JSON instead of text")
+    status.add_argument(
+        "--show-orphans", action="store_true", help="include orphan CAS hashes in report"
+    )
+    status.add_argument(
+        "-v", "--verbose", action="store_true", help="list device CAS hashes and orphan hashes"
+    )
+
     # ndb cas put/get
     cas = sub.add_parser("cas", help="content-addressed storage commands")
     cas.add_argument(
@@ -119,10 +134,35 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.cmd == "db" and args.db_cmd == "init":
-        path = dbmod.init_db(args.path)
-        print(f"Initialized database at {path}")
-        return 0
+    if args.cmd == "db":
+        if args.db_cmd == "init":
+            path = dbmod.init_db(args.path)
+            print(f"Initialized database at {path}")
+            return 0
+        if args.db_cmd == "status":
+            rep = dbmod.db_status(
+                db_path=args.path,
+                include_orphans=(args.show_orphans or args.verbose),
+                include_device_hashes=args.verbose,
+            )
+            if getattr(args, "json", False):
+                import json as _json
+                print(_json.dumps(rep, indent=2))
+                return 0
+            # Text output
+            print(f"Database: {args.path}")
+            print(f"Devices:  {rep['devices']}")
+            print(f"CAS:      {rep['cas']}")
+            print(f"Orphans:  {rep['orphans_count']}")
+            if args.verbose and rep.get("device_hashes"):
+                print("Device hashes:")
+                for h in rep["device_hashes"]:  # type: ignore[index]
+                    print(f"- {h}")
+            if (args.show_orphans or args.verbose) and rep.get("orphans"):
+                print("Orphan hashes:")
+                for h in rep["orphans"]:  # type: ignore[index]
+                    print(f"- {h}")
+            return 0
 
     # ndb cas ...
     if args.cmd == "cas":

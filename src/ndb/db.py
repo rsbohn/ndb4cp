@@ -4,6 +4,7 @@ import sqlite3
 from pathlib import Path
 import hashlib
 from typing import Iterable, List, Tuple
+from typing import Dict
 
 
 DEFAULT_DB_PATH = Path("local.db")
@@ -191,3 +192,50 @@ def get_device_cas(uid: str, *, db_path: Path | str = DEFAULT_DB_PATH) -> Tuple[
         if not row2:
             return (cas_hash, "")
         return (row2[0], row2[1])
+
+
+def db_status(
+    *,
+    db_path: Path | str = DEFAULT_DB_PATH,
+    include_orphans: bool = False,
+    include_device_hashes: bool = False,
+) -> Dict[str, object]:
+    """Return a health report for the database.
+
+    Keys:
+    - cas: total CAS rows
+    - devices: total non-deleted devices
+    - orphans_count: CAS rows not referenced by any active device
+    - orphans: list of orphan hashes (only when include_orphans=True)
+    """
+    with connect(db_path) as conn:
+        cur = conn.execute("SELECT COUNT(*) FROM cas")
+        cas_count = int(cur.fetchone()[0])
+        cur = conn.execute("SELECT COUNT(*) FROM devices WHERE deleted_at IS NULL")
+        dev_count = int(cur.fetchone()[0])
+        cur = conn.execute(
+            """
+            SELECT hash FROM cas
+            WHERE hash NOT IN (
+                SELECT cas_hash FROM devices WHERE deleted_at IS NULL
+            )
+            ORDER BY hash
+            """
+        )
+        orphans = [h for (h,) in cur.fetchall()]
+        dev_hashes: list[str] = []
+        if include_device_hashes:
+            cur = conn.execute(
+                "SELECT DISTINCT cas_hash FROM devices WHERE deleted_at IS NULL ORDER BY cas_hash"
+            )
+            dev_hashes = [h for (h,) in cur.fetchall()]
+    report: Dict[str, object] = {
+        "cas": cas_count,
+        "devices": dev_count,
+        "orphans_count": len(orphans),
+    }
+    if include_orphans:
+        report["orphans"] = orphans
+    if include_device_hashes:
+        report["device_hashes"] = dev_hashes
+    return report
