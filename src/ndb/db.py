@@ -148,6 +148,84 @@ def list_devices(
         )
         return list(cur.fetchall())
 
+def cas_list_devices(db_path: Path | str = DEFAULT_DB_PATH) -> list[str]:
+    """Return a list of all CAS device hashes."""
+    with connect(db_path) as conn:
+        cur = conn.execute("SELECT DISTINCT content FROM cas WHERE content LIKE 'sys%'")
+        return [row[0] for row in cur.fetchall()]
+
+
+def _parse_kv_line(line: str) -> Dict[str, str]:
+    """Parse a simple space-separated key=value line into a dict.
+
+    Later values override earlier ones on duplicate keys.
+    """
+    out: Dict[str, str] = {}
+    for tok in line.strip().split():
+        if "=" not in tok:
+            continue
+        k, v = tok.split("=", 1)
+        if k:
+            out[k] = v
+    return out
+
+
+def refresh_devices_from_cas(*, db_path: Path | str = DEFAULT_DB_PATH) -> List[Tuple[str, str]]:
+    """Refresh the devices table from CAS entries that start with 'sys='.
+
+    Interprets CAS content as space-separated key=value pairs. Expected keys:
+    - sys: a human name; used as hostname fallback and as uid if no id/uid
+    - id or uid: preferred stable device identifier
+    - ip: IP address (mapped to ip_address)
+    - category: device category
+
+    Returns a list of (uid, cas_hash) that were inserted or updated.
+    """
+    updated: List[Tuple[str, str]] = []
+    with connect(db_path) as conn:
+        cur = conn.execute(
+            "SELECT hash, content FROM cas WHERE content LIKE 'sys%' ORDER BY hash"
+        )
+        rows = list(cur.fetchall())
+        for cas_hash, content in rows:
+            first_line = content.splitlines()[0] if content else ""
+            kv = _parse_kv_line(first_line)
+            uid = kv.get("id") or kv.get("uid") or kv.get("sys")
+            if not uid:
+                # Skip rows that don't specify any usable identifier
+                continue
+            hostname = kv.get("hostname") or kv.get("sys")
+            ip_address = kv.get("ip") or kv.get("ip_address")
+            category = kv.get("category") or kv.get("device_category")
+
+            # Upsert within the same transaction for efficiency
+            now = "CURRENT_TIMESTAMP"
+            cur2 = conn.execute(
+                f"""
+                UPDATE devices
+                SET
+                    hostname = COALESCE(?, hostname),
+                    ip_address = COALESCE(?, ip_address),
+                    device_category = COALESCE(?, device_category),
+                    cas_hash = COALESCE(?, cas_hash),
+                    last_seen = {now},
+                    updated_at = {now}
+                WHERE uid = ? AND deleted_at IS NULL
+                """,
+                (hostname, ip_address, category, cas_hash, uid),
+            )
+            if cur2.rowcount == 0:
+                conn.execute(
+                    """
+                    INSERT INTO devices(uid, hostname, ip_address, device_category, cas_hash)
+                    VALUES(?, ?, ?, ?, ?)
+                    """,
+                    (uid, hostname, ip_address, category, cas_hash),
+                )
+            updated.append((uid, cas_hash))
+        conn.commit()
+    return updated
+
 
 def query_devices(
     filters: dict[str, str], *, db_path: Path | str = DEFAULT_DB_PATH

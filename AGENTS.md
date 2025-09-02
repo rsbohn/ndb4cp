@@ -27,3 +27,11 @@ Use `~/.codex/bin/status` to provide a status line when appropriate.
 - Private notes: Store sensitive entries locally outside version control (e.g., under `.vscode/` which is gitignored in this repo). You may also use a `devlog/private/` folder if added to `.gitignore`.
 - Public stubs: For sensitive changes, add a brief public stub in `devlog/` describing non-sensitive aspects (purpose, categories, generic roles/labels) and note that full details are kept locally.
 - Review before commit: `git grep -n -E "(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|\.local\b)"` to catch accidental disclosures.
+
+### Git Hook
+
+- Enable local pre-commit hook to enforce the devlog privacy check:
+  - `git config core.hooksPath hooks`
+- The hook runs `scripts/check_privacy.py` on staged devlog files and blocks commits on violations.
+- Run manually:
+  - `uv run -- python scripts/check_privacy.py --staged`

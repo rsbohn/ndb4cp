@@ -14,7 +14,7 @@ Query
 Discovery
 
 - Single device (via /cp/version.json):
-  - `uv run -- ndb discover --from 192.168.0.191:80`
+  - `uv run -- ndb discover --from 192.168.0.49:80`
   - Add `--raw --debug` to print the fetched JSON and URL.
   - If needed, pass the Web API password with `--password` or env `CIRCUITPY_WEB_API_PASSWORD`.
 - mDNS sweep (requires zeroconf):
